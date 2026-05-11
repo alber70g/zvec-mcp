@@ -14,6 +14,7 @@ from zvec_mcp.config import Config
 from zvec_mcp.embeddings import get_embedder
 from zvec_mcp.knowledge import KnowledgeBase
 from zvec_mcp.memory import MemoryStore
+from zvec_mcp.wiki import backlinks_for, navigate_file, retrieve_wikilink
 
 # ---------------------------------------------------------------------------
 # Logging to stderr (stdout is JSON-RPC for MCP)
@@ -102,6 +103,34 @@ def knowledge_ingest_file(path: str) -> str:
 
 
 @mcp.tool()
+def knowledge_ingest_path(
+    root: str,
+    glob_pattern: str = "**/*.md",
+    exclude_patterns: list[str] | None = None,
+    max_files: int | None = None,
+) -> str:
+    """Ingest a directory tree of markdown files into the knowledge base.
+
+    Args:
+        root: Directory to scan.
+        glob_pattern: Glob pattern relative to root. Defaults to **/*.md.
+        exclude_patterns: Optional fnmatch patterns relative to root.
+        max_files: Optional cap for testing or staged ingestion.
+    """
+    kb, _ = _ensure_init()
+    try:
+        result = kb.ingest_path(
+            root,
+            glob_pattern=glob_pattern,
+            exclude_patterns=exclude_patterns,
+            max_files=max_files,
+        )
+        return json.dumps({"status": "ok", **result})
+    except (FileNotFoundError, NotADirectoryError, ValueError) as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
 def knowledge_search(query: str, topk: int = 5) -> str:
     """Search the knowledge base for text relevant to a query.
 
@@ -134,6 +163,49 @@ def knowledge_stats() -> str:
     """Return statistics about the knowledge base collection."""
     kb, _ = _ensure_init()
     return json.dumps(kb.stats())
+
+
+@mcp.tool()
+def knowledge_navigate_file(source_file: str) -> str:
+    """Return outgoing wikilinks and backlinks for a markdown file.
+
+    Args:
+        source_file: Markdown file to inspect.
+    """
+    try:
+        result = navigate_file(source_file, cfg.navigation_index_path)
+        return json.dumps({"status": "ok", **result})
+    except FileNotFoundError as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
+def knowledge_wikilink_retrieve(source_file: str, target_link: str) -> str:
+    """Resolve a wikilink from a source file and return target content.
+
+    Args:
+        source_file: File containing or contextualizing the wikilink.
+        target_link: Raw target or Obsidian wikilink, e.g. [[people/randy]].
+    """
+    try:
+        result = retrieve_wikilink(source_file, target_link)
+        return json.dumps({"status": "ok", **result})
+    except FileNotFoundError as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
+def knowledge_backlinks(source_file: str) -> str:
+    """Return files that reference a markdown source file.
+
+    Args:
+        source_file: Markdown file to look up.
+    """
+    try:
+        result = backlinks_for(source_file, cfg.navigation_index_path)
+        return json.dumps({"status": "ok", "source": source_file, "backlinks": result})
+    except ValueError as e:
+        return json.dumps({"status": "error", "message": str(e)})
 
 
 # ===================================================================

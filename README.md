@@ -25,6 +25,7 @@ Claude Code MCP server that gives your AI agent a **local vector database** for 
   - [Memory](#memory)
   - [Status](#status)
 - [Usage examples](#usage-examples)
+- [Docker](#docker)
 - [Architecture](#architecture)
 - [Data storage](#data-storage)
 - [Troubleshooting](#troubleshooting)
@@ -70,7 +71,7 @@ pip install zvec-mcp
 This installs the `zvec-mcp` command-line entry point. To also get local offline embeddings:
 
 ```bash
-pip install zvec-mcp sentence-transformers
+pip install "zvec-mcp[local]"
 ```
 
 For OpenAI embeddings:
@@ -90,7 +91,7 @@ uv venv --python 3.10
 uv pip install -e .
 
 # Optional: local embeddings
-uv pip install sentence-transformers
+uv pip install -e ".[local]"
 
 # Optional: OpenAI embeddings
 uv pip install openai
@@ -132,8 +133,8 @@ Create or edit `.mcp.json` in your project root:
         "ZVEC_MCP_DATA_DIR": "${HOME}/.zvec-mcp",
         "ZVEC_MCP_EMBEDDING": "http",
         "ZVEC_MCP_HTTP_URL": "http://127.0.0.1:1234/v1/embeddings",
-        "ZVEC_MCP_HTTP_MODEL": "text-embedding-nomic-embed-text-v1.5@f16",
-        "ZVEC_MCP_HTTP_DIM": "768"
+        "ZVEC_MCP_HTTP_MODEL": "text-embedding-qwen3-embedding-0.6b",
+        "ZVEC_MCP_HTTP_DIM": "1024"
       }
     }
   }
@@ -168,7 +169,7 @@ Calls any OpenAI-compatible `/v1/embeddings` endpoint. This is the **recommended
 **Setup with LM Studio:**
 
 1. Install [LM Studio](https://lmstudio.ai/)
-2. Download an embedding model (e.g. `nomic-embed-text-v1.5`)
+2. Download an embedding model (e.g. `text-embedding-qwen3-embedding-0.6b`)
 3. Start the local server (LM Studio → Developer → Start Server)
 4. Note the port (default `1234`) and API key if you enabled authentication
 
@@ -181,9 +182,9 @@ Calls any OpenAI-compatible `/v1/embeddings` endpoint. This is the **recommended
       "env": {
         "ZVEC_MCP_EMBEDDING": "http",
         "ZVEC_MCP_HTTP_URL": "http://127.0.0.1:1234/v1/embeddings",
-        "ZVEC_MCP_HTTP_MODEL": "text-embedding-nomic-embed-text-v1.5@f16",
+        "ZVEC_MCP_HTTP_MODEL": "text-embedding-qwen3-embedding-0.6b",
         "ZVEC_MCP_HTTP_API_KEY": "your-api-key",
-        "ZVEC_MCP_HTTP_DIM": "768"
+        "ZVEC_MCP_HTTP_DIM": "1024"
       }
     }
   }
@@ -207,13 +208,13 @@ Calls any OpenAI-compatible `/v1/embeddings` endpoint. This is the **recommended
 }
 ```
 
-> **Important:** The `ZVEC_MCP_HTTP_DIM` value must match the output dimension of your chosen model. Common values: `768` for nomic-embed-text, `384` for all-MiniLM-L6-v2, `1024` for BGE-large.
+> **Important:** The `ZVEC_MCP_HTTP_DIM` value must match the output dimension of your chosen model. Common values: `1024` for Qwen3 0.6B embeddings, `768` for nomic-embed-text, and `384` for all-MiniLM-L6-v2.
 
 ### Local — sentence-transformers
 
 Runs `all-MiniLM-L6-v2` entirely offline on your machine. 384 dimensions, uses MPS acceleration on Apple Silicon. No API key needed.
 
-**Requires:** `pip install sentence-transformers` (pulls in PyTorch, ~500 MB)
+**Requires:** `pip install "zvec-mcp[local]"` (pulls in PyTorch)
 
 ```json
 {
@@ -265,9 +266,9 @@ All settings are driven by environment variables, passed through the `env` block
 | `ZVEC_MCP_CHUNK_OVERLAP` | `64` | Overlap between consecutive chunks |
 | **HTTP backend** | | |
 | `ZVEC_MCP_HTTP_URL` | `http://127.0.0.1:1234/v1/embeddings` | OpenAI-compatible embedding endpoint |
-| `ZVEC_MCP_HTTP_MODEL` | `text-embedding-nomic-embed-text-v1.5@f16` | Model name sent to the endpoint |
+| `ZVEC_MCP_HTTP_MODEL` | `text-embedding-qwen3-embedding-0.6b` | Model name sent to the endpoint |
 | `ZVEC_MCP_HTTP_API_KEY` | — | Bearer token (optional, depends on your server) |
-| `ZVEC_MCP_HTTP_DIM` | `768` | Embedding dimension (must match your model) |
+| `ZVEC_MCP_HTTP_DIM` | `1024` | Embedding dimension (must match your model) |
 | **OpenAI backend** | | |
 | `OPENAI_API_KEY` | — | Required when using OpenAI backend |
 | `ZVEC_MCP_OPENAI_MODEL` | `text-embedding-3-small` | OpenAI model name |
@@ -283,7 +284,11 @@ All settings are driven by environment variables, passed through the `env` block
 |------|-------------|
 | `knowledge_ingest` | Chunk, embed, and store text for later retrieval. Accepts `text` and an optional `source` label. |
 | `knowledge_ingest_file` | Read a file from disk and ingest its contents. Accepts a file `path`. |
+| `knowledge_ingest_path` | Walk a directory, ingest matching markdown files, and rebuild the navigation sidecar. |
 | `knowledge_search` | Semantic search over ingested documents. Accepts a `query` and optional `topk` (default 5). |
+| `knowledge_navigate_file` | Read a markdown file and return outgoing wikilinks plus backlinks. |
+| `knowledge_wikilink_retrieve` | Resolve a wikilink from a source file and return the target markdown content. |
+| `knowledge_backlinks` | Return files that reference a markdown source file. |
 | `knowledge_delete_source` | Remove all chunks from a given `source`. |
 | `knowledge_stats` | Return collection statistics (doc count, embedding dimension, path). |
 
@@ -319,6 +324,24 @@ Claude will call `knowledge_ingest_file` with that path. You can then ask questi
 
 Claude will call `knowledge_search` to retrieve relevant chunks and use them in its answer.
 
+**Ingest an existing Obsidian wiki:**
+
+> "Ingest `/Users/albert/projects/alber70g/notes/wiki` with `**/*.md`."
+
+Claude will call `knowledge_ingest_path`. After search finds a relevant chunk,
+Claude can call `knowledge_navigate_file` on the result source to inspect
+wikilinks and backlinks, or `knowledge_wikilink_retrieve` to open a linked
+document.
+
+Example MCP tool arguments:
+
+```json
+{
+  "root": "/Users/albert/projects/alber70g/notes/wiki",
+  "glob_pattern": "**/*.md"
+}
+```
+
 **Store project context as memory:**
 
 > "Remember that this project uses PostgreSQL 16 and the primary database is called `appdb`."
@@ -347,6 +370,75 @@ Claude stores this with the `"decision"` category.
 > "Delete all knowledge from source `docs/old-api.md`."
 >
 > "Forget all memories in the `project` category."
+
+---
+
+## Docker
+
+The container runs `zvec-mcp` over stdio. MCP clients should start it with
+`docker run -i` so JSON-RPC can flow over standard input and output.
+
+Build the image:
+
+```bash
+docker build -t zvec-mcp:local .
+```
+
+Run it with persistent zvec data and the notes wiki mounted read-only:
+
+```bash
+docker run --rm -i \
+  -e ZVEC_MCP_DATA_DIR=/data \
+  -e ZVEC_MCP_EMBEDDING=http \
+  -e ZVEC_MCP_HTTP_URL=http://host.docker.internal:1234/v1/embeddings \
+  -e ZVEC_MCP_HTTP_MODEL=text-embedding-qwen3-embedding-0.6b \
+  -e ZVEC_MCP_HTTP_DIM=1024 \
+  -v zvec-mcp-data:/data \
+  -v /Users/albert/projects/alber70g/notes/wiki:/wiki:ro \
+  zvec-mcp:local
+```
+
+Example MCP client command:
+
+```json
+{
+  "command": "docker",
+  "args": [
+    "run",
+    "--rm",
+    "-i",
+    "-e",
+    "ZVEC_MCP_DATA_DIR=/data",
+    "-e",
+    "ZVEC_MCP_EMBEDDING=http",
+    "-e",
+    "ZVEC_MCP_HTTP_URL=http://host.docker.internal:1234/v1/embeddings",
+    "-e",
+    "ZVEC_MCP_HTTP_MODEL=text-embedding-qwen3-embedding-0.6b",
+    "-e",
+    "ZVEC_MCP_HTTP_DIM=1024",
+    "-v",
+    "zvec-mcp-data:/data",
+    "-v",
+    "/Users/albert/projects/alber70g/notes/wiki:/wiki:ro",
+    "zvec-mcp:local"
+  ]
+}
+```
+
+Inside Docker, use `/wiki` as the ingestion root:
+
+```json
+{
+  "root": "/wiki",
+  "glob_pattern": "**/*.md"
+}
+```
+
+`host.docker.internal` is used so the container can reach LM Studio running on
+the host machine. The Docker image installs only the core package and is
+configured for HTTP embeddings, so it does not pull in PyTorch unless you build
+a custom image with the `local` extra.
 
 ---
 
@@ -384,10 +476,11 @@ Claude stores this with the `"decision"` category.
 
 ```
 src/zvec_mcp/
-├── server.py       # FastMCP server — 11 tools registered via @mcp.tool()
+├── server.py       # FastMCP server — tools registered via @mcp.tool()
 ├── config.py       # Env-driven dataclass, reads all ZVEC_MCP_* variables
 ├── embeddings.py   # Lazy-loaded embedding singleton (local, OpenAI, or HTTP)
 ├── knowledge.py    # RAG pipeline: chunk → embed → upsert → query
+├── wiki.py         # Obsidian wikilink navigation helpers
 └── memory.py       # Semantic memory: remember → recall → forget
 ```
 
@@ -413,8 +506,9 @@ All data lives under `ZVEC_MCP_DATA_DIR` (default `~/.zvec-mcp/`):
 
 ```
 ~/.zvec-mcp/
-├── knowledge/    # zvec collection for RAG chunks
-└── memory/       # zvec collection for memories
+├── knowledge/              # zvec collection for RAG chunks
+├── memory/                 # zvec collection for memories
+└── navigation_index.json   # sidecar wikilink/backlink index
 ```
 
 Collections are created automatically on first use. To reset everything, delete the directory:
@@ -453,10 +547,10 @@ The `all-MiniLM-L6-v2` model (~80 MB) is downloaded on first use. Subsequent run
 
 ### `sentence-transformers` not found
 
-The local backend requires `sentence-transformers`. Install it:
+The local backend requires the `local` extra. Install it:
 
 ```bash
-pip install sentence-transformers
+pip install "zvec-mcp[local]"
 ```
 
 Or switch to the `http` backend if you have LM Studio or Ollama running.

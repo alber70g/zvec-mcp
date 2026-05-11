@@ -1,0 +1,20 @@
+services:
+  zvec-mcp:
+    build:
+      context: .
+    image: zvec-mcp:local
+    stdin_open: true
+    tty: false
+    environment:
+      ZVEC_MCP_DATA_DIR: /data
+      ZVEC_MCP_EMBEDDING: http
+      ZVEC_MCP_HTTP_URL: http://host.docker.internal:1234/v1/embeddings
+      ZVEC_MCP_HTTP_MODEL: text-embedding-qwen3-embedding-0.6b
+      ZVEC_MCP_HTTP_DIM: "1024"
+    volumes:
+      - zvec-mcp-data:/data
+      - /Users/albert/projects/alber70g/notes/wiki:/wiki:ro
+
+volumes:
+  zvec-mcp-data:
+

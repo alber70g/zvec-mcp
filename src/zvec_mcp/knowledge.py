@@ -21,6 +21,7 @@ from zvec.model.param import FlatIndexParam, InvertIndexParam
 
 from zvec_mcp.config import Config
 from zvec_mcp.embeddings import _Embedder
+from zvec_mcp.wiki import build_navigation_index, iter_markdown_files, write_navigation_index
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,46 @@ class KnowledgeBase:
             raise FileNotFoundError(f"File not found: {p}")
         text = p.read_text(encoding="utf-8", errors="replace")
         return self.ingest(text, source=str(p))
+
+    def ingest_path(
+        self,
+        root: str,
+        *,
+        glob_pattern: str = "**/*.md",
+        exclude_patterns: list[str] | None = None,
+        max_files: int | None = None,
+    ) -> dict[str, Any]:
+        """Ingest files below a directory and rebuild the navigation sidecar."""
+        root_path = Path(root).expanduser().resolve()
+        files = iter_markdown_files(root_path, glob_pattern, exclude_patterns, max_files)
+
+        chunks_stored = 0
+        files_ingested = 0
+        failures: list[dict[str, str]] = []
+        for file_path in files:
+            try:
+                chunks_stored += self.ingest_file(str(file_path))
+                files_ingested += 1
+            except Exception as exc:  # Keep batch ingest moving and report the file.
+                failures.append({"path": str(file_path), "error": str(exc)})
+
+        index = build_navigation_index(
+            root_path,
+            glob_pattern=glob_pattern,
+            exclude_patterns=exclude_patterns,
+            max_files=max_files,
+        )
+        write_navigation_index(index, self._cfg.navigation_index_path)
+
+        return {
+            "root": str(root_path),
+            "glob_pattern": glob_pattern,
+            "files_seen": len(files),
+            "files_ingested": files_ingested,
+            "chunks_stored": chunks_stored,
+            "failures": failures,
+            "navigation_index": str(self._cfg.navigation_index_path),
+        }
 
     # ------------------------------------------------------------------
     # Search

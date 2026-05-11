@@ -41,13 +41,13 @@ class Config:
         "ZVEC_MCP_HTTP_URL", "http://127.0.0.1:1234/v1/embeddings"
     ))
     http_model: str = field(default_factory=lambda: os.environ.get(
-        "ZVEC_MCP_HTTP_MODEL", "text-embedding-nomic-embed-text-v1.5@f16"
+        "ZVEC_MCP_HTTP_MODEL", "text-embedding-qwen3-embedding-0.6b"
     ))
     http_api_key: str = field(default_factory=lambda: os.environ.get(
         "ZVEC_MCP_HTTP_API_KEY", ""
     ))
     http_dimension: int = field(default_factory=lambda: int(os.environ.get(
-        "ZVEC_MCP_HTTP_DIM", "768"
+        "ZVEC_MCP_HTTP_DIM", "1024"
     )))
 
     # Chunking
@@ -77,6 +77,10 @@ class Config:
     @property
     def memory_path(self) -> Path:
         return self.data_dir / self.memory_collection
+
+    @property
+    def navigation_index_path(self) -> Path:
+        return self.data_dir / "navigation_index.json"
 
     def ensure_dirs(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
